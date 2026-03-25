@@ -1,5 +1,4 @@
 import socket
-import threading
 import struct
 import os
 
@@ -51,6 +50,8 @@ def process_command(sock, data, addr, client_name="Anonymous"):
             print(f"{p_label} {addr_str}: Sending file: '{filename}'.")
             with open(filepath, "rb") as f:
                 filedata = f.read()
+            payload = f"/download {filename}:".encode('utf-8') + filedata
+            send_msg(sock, payload)
             print(f"{p_label} {addr_str}: {S_GREEN}Download '{filename}' is successful.{S_RESET}")
             send_msg(sock, f"[SUCCESS]: Download '{filename}' is finished.")
         else:
@@ -111,7 +112,7 @@ def main():
 
     while True:
         c_sock, addr = s.accept()
-        threading.Thread(target=client_handler, args=(c_sock, addr), daemon=True).start()
+        client_handler(c_sock, addr)
 
 if __name__ == "__main__":
     main()
