@@ -1,149 +1,154 @@
-import base64
-import os
-import select
 import socket
+import select
+import struct
+import os
 
-HOST = "127.0.0.1"
-PORT = 5000
-BUFFER_SIZE = 4096
-SERVER_FILES_DIR = "./Files/Uploaded"
+S_IP = "0.0.0.0"
+S_PORT = 5000
+S_GREEN= "\033[1;32m"
+S_RED = "\033[1;31m"
+S_CYAN = "\033[1;36m"
+S_YELLOW = "\033[1;33m"
+S_RESET= "\033[0m"
+S_BOLD = "\033[1m"
 
+SERVER_FILES_DIR = "server_files"
+os.makedirs(SERVER_FILES_DIR, exist_ok=True)
 
-def send_line(sock, line):
-    sock.sendall((line + "\n").encode())
+def send_msg(sock, data):
+    if isinstance(data, str): data = data.encode()
+    header = struct.pack(">I", len(data))
+    sock.sendall(header + data)
 
+def recv_msg(sock):
+    header = sock.recv(4)
+    if not header or len(header) < 4:
+        return None
+    length = struct.unpack(">I", header)[0]
+    buf = b""
+    while len(buf) < length:
+        chunk = sock.recv(length - len(buf))
+        if not chunk:
+            return None
+        buf += chunk
+    return buf
 
-def broadcast(clients, line):
-    broken = []
-    for client in clients:
+def broadcast(clients, sender_sock, message):
+    dead = []
+    for sock in list(clients):
+        if sock is not sender_sock:
+            try:
+                send_msg(sock, message)
+            except OSError:
+                dead.append(sock)
+    return dead
+
+def process_command(sock, data, clients):
+    addr = clients[sock]["addr"]
+    name = clients[sock]["name"]
+    addr_str = f"{S_CYAN}({name}-{addr[0]}:{addr[1]}){S_RESET}"
+    p_label = f"{S_YELLOW}[PROCESS]{S_RESET}"
+
+    # 1. Handle List
+    if data == b"/list":
+        print(f"{p_label} {addr_str}: Requested file list.")
+        files = os.listdir(SERVER_FILES_DIR)
+        res = ", ".join(files) if files else "Directory is empty."
+        send_msg(sock, f"[LIST]: {res}")
+        return []
+
+    # 2. Handle Download
+    elif data.startswith(b"/download "):
+        filename = data[10:].decode('utf-8', errors='ignore')
+        filepath = os.path.join(SERVER_FILES_DIR, filename)
+        if os.path.exists(filepath) and os.path.isfile(filepath):
+            print(f"{p_label} {addr_str}: Sending file: '{filename}'.")
+            with open(filepath, "rb") as f:
+                filedata = f.read()
+            print(f"{p_label} {addr_str}: {S_GREEN}Download '{filename}' is successful.{S_RESET}")
+            send_msg(sock, f"[SUCCESS]: Download '{filename}' is finished.")
+        else:
+            print(f"{p_label} {addr_str}: {S_RED}Download failed, '{filename}' not found.{S_RESET}")
+            send_msg(sock, f"[ERROR]: File '{filename}' not found.")
+        return []
+
+    # 3. Handle Upload
+    elif data.startswith(b"/upload "):
         try:
-            send_line(client, line)
-        except OSError:
-            broken.append(client)
-    return broken
+            content = data[8:]
+            file_header, filedata = content.split(b":", 1)
+            filename = file_header.decode('utf-8')
+            print(f"{p_label} {addr_str}: Receiving '{filename}'.")
+            with open(os.path.join(SERVER_FILES_DIR, filename), "wb") as f:
+                f.write(filedata)
+            send_msg(sock, f"[SUCCESS]: File '{filename}' stored on server.")
+            print(f"{p_label} {addr_str}: {S_GREEN}Receiving '{filename}' is complete.{S_RESET}")
+        except Exception as e:
+            print(f"{p_label} {addr_str}: {S_RED}Receiving error: {e}.{S_RESET}")
+            send_msg(sock, "[ERROR]: Upload failed.")
+        return []
 
+    # 4. Handle Chat
+    else:
+        msg = data.decode('utf-8', errors='ignore')
+        print(f"{S_BOLD}[CHAT]{S_RESET} {addr_str}: {msg}")
+        dead = broadcast(clients, sock, f"[{name}]: {msg}")
+        return dead
 
-def close_client(client, input_sockets, clients, buffers):
-    if client in input_sockets:
-        input_sockets.remove(client)
-    if client in clients:
-        del clients[client]
-    if client in buffers:
-        del buffers[client]
+def remove_client(sock, sockets, clients):
+    info = clients.pop(sock, {})
+    addr = info.get("addr", ("?", "?"))
+    name = info.get("name", "Anonymous")
+    print(f"{S_RED}[DISCONNECTED]{S_RESET}: {name} from {addr[0]}:{addr[1]}.")
+    if sock in sockets:
+        sockets.remove(sock)
     try:
-        client.close()
+        sock.close()
     except OSError:
         pass
 
+def main():
+    os.system("clear")
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
-os.makedirs(SERVER_FILES_DIR, exist_ok=True)
+    try:
+        s.bind((S_IP, S_PORT))
+        s.listen(5)
+        print(f"{S_BOLD}{S_GREEN}[INFO]: Server Select is running on port {S_PORT}...{S_RESET}")
+    except Exception as e:
+        print(f"{S_RED}[ERROR]: Could not start server: {e}{S_RESET}")
+        return
 
-server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-server_socket.bind((HOST, PORT))
-server_socket.listen(5)
+    sockets = [s]
+    clients = {}
 
-input_sockets = [server_socket]
-clients = {}
-buffers = {}
+    while True:
+        read_ready, _, _ = select.select(sockets, [], [])
 
-print(f"Server listening on {HOST}:{PORT}")
-
-while True:
-    read_ready, _, _ = select.select(input_sockets, [], [])
-
-    for sock in read_ready:
-        if sock == server_socket:
-            client_sock, client_addr = server_socket.accept()
-            input_sockets.append(client_sock)
-            clients[client_sock] = client_addr
-            buffers[client_sock] = ""
-            print("Connected:", client_addr)
-            send_line(client_sock, "SYSTEM|Connected to server")
-            continue
-
-        try:
-            data = sock.recv(BUFFER_SIZE)
-        except ConnectionResetError:
-            data = b""
-
-        if not data:
-            addr = clients.get(sock)
-            if addr:
-                print("Disconnected:", addr)
-            close_client(sock, input_sockets, clients, buffers)
-            continue
-
-        buffers[sock] += data.decode(errors="replace")
-
-        while "\n" in buffers[sock]:
-            line, buffers[sock] = buffers[sock].split("\n", 1)
-            line = line.strip()
-            if not line:
-                continue
-
-            addr = clients.get(sock, ("unknown", 0))
-            sender = f"{addr[0]}:{addr[1]}"
-
-            if line == "LIST":
-                files = sorted(
-                    name
-                    for name in os.listdir(SERVER_FILES_DIR)
-                    if os.path.isfile(os.path.join(SERVER_FILES_DIR, name))
-                )
-                send_line(sock, f"LIST|{','.join(files)}")
-
-            elif line.startswith("DOWNLOAD|"):
-                filename = os.path.basename(line.split("|", 1)[1].strip())
-                if not filename:
-                    send_line(sock, "ERROR|Filename is required")
-                    continue
-
-                file_path = os.path.join(SERVER_FILES_DIR, filename)
-                if not os.path.isfile(file_path):
-                    send_line(sock, f"ERROR|File not found: {filename}")
-                    continue
-
-                with open(file_path, "rb") as f:
-                    content = f.read()
-
-                encoded = base64.b64encode(content).decode()
-                send_line(sock, f"DOWNLOAD|{filename}|{encoded}")
-
-            elif line.startswith("UPLOAD|"):
-                parts = line.split("|", 2)
-                if len(parts) != 3:
-                    send_line(sock, "ERROR|Invalid upload format")
-                    continue
-
-                filename = os.path.basename(parts[1].strip())
-                content_b64 = parts[2]
-                if not filename:
-                    send_line(sock, "ERROR|Filename is required")
-                    continue
-
-                try:
-                    content = base64.b64decode(content_b64.encode(), validate=True)
-                except Exception:
-                    send_line(sock, "ERROR|Invalid file content")
-                    continue
-
-                file_path = os.path.join(SERVER_FILES_DIR, filename)
-                with open(file_path, "wb") as f:
-                    f.write(content)
-
-                send_line(sock, f"UPLOAD_OK|{filename}|{len(content)}")
-
-            elif line.startswith("CHAT|"):
-                message = line.split("|", 1)[1].strip()
-                if not message:
-                    send_line(sock, "ERROR|Message cannot be empty")
-                    continue
-
-                payload = f"CHAT|{sender}|{message}"
-                dead_clients = broadcast(list(clients.keys()), payload)
-                for dead in dead_clients:
-                    close_client(dead, input_sockets, clients, buffers)
+        for sock in read_ready:
+            if sock is s:
+                c_sock, addr = s.accept()
+                sockets.append(c_sock)
+                clients[c_sock] = {"addr": addr, "name": "Anonymous"}
+                print(f"{S_GREEN}[CONNECTED]{S_RESET}: Connection from {addr[0]}:{addr[1]}.")
 
             else:
-                send_line(sock, "ERROR|Unknown command")
+                data = recv_msg(sock)
+                if not data:
+                    remove_client(sock, sockets, clients)
+                    continue
+
+                if data.startswith(b"/name "):
+                    name = data[6:].decode('utf-8', errors='ignore')
+                    clients[sock]["name"] = name
+                    addr = clients[sock]["addr"]
+                    print(f"{S_CYAN}[INFO]{S_RESET}: {name} has joined from {addr[0]}:{addr[1]}.")
+                    continue
+
+                dead = process_command(sock, data, clients)
+                for d in dead:
+                    remove_client(d, sockets, clients)
+
+if __name__ == "__main__":
+    main()
