@@ -973,8 +973,8 @@ After:
 
 Before:
 
-![](Images/Thread-1.png)
+![](Images/Thread_1.png)
 
 After:
 
-![](Images/Thread-2.png)
+![](Images/Thread_2.png)
