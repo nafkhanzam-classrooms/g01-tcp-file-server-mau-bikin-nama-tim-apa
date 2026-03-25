@@ -188,7 +188,7 @@ if __name__ == "__main__":
 - **`handle_list(sock)`**: Mengirim perintah `b"/list"` ke server.
 - **`handle_download(sock, cmd)`**: Memvalidasi argumen (harus tepat 1 filename), lalu mengirim `/download <filename>` ke server.
 - **`handle_upload(sock, cmd)`**: Memvalidasi argumen, membaca file dari folder `client_files/` secara binary, lalu membungkus data dalam format `/upload <filename>:<binary_data>` dan mengirimnya.
-- **`receive_handler(sock)`**: Berjalan di thread terpisah. Terus-menerus memanggil `recv_msg()` dan mencetak respons dari server dengan warna sesuai label (`[LIST]`, `[SUCCESS]`, `[ERROR]`, dll). Memanggil `os._exit(0)` jika koneksi terputus.
+- **`receive_handler(sock)`**: Berjalan di thread terpisah. Terus-menerus memanggil `recv_msg()` dan mencetak respons dari server dengan warna sesuai label (`[LIST]`, `[SUCCESS]`, `[ERROR]`, dll), mendownload `<filename>`, dan memanggil `os._exit(0)` jika koneksi terputus.
 - **`print_menu()`**: Menampilkan daftar perintah yang tersedia ke terminal.
 
 ---
