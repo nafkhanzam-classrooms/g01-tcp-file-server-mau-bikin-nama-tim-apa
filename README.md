@@ -13,9 +13,8 @@
 
 ## Link Youtube (Unlisted)
 Link ditaruh di bawah ini
-```
+
 [![Video](https://youtu.be/ECSiuuGiLTM)
-```
 
 ## Penjelasan Program
 
