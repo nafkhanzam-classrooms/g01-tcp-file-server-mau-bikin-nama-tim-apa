@@ -197,7 +197,6 @@ if __name__ == "__main__":
 
 ```
 import socket
-import threading
 import struct
 import os
 
@@ -309,18 +308,18 @@ def main():
 
     while True:
         c_sock, addr = s.accept()
-        threading.Thread(target=client_handler, args=(c_sock, addr), daemon=True).start()
+        client_handler(c_sock, addr)
 
 if __name__ == "__main__":
     main()
 ```
 
-**Konsep:** Server sinkron: melayani satu client dalam satu thread. Menggunakan `threading.Thread` hanya untuk menangani client secara berurutan (bukan konkuren sejati).
+**Konsep:** Server sinkron: melayani satu client saja.
 
 **Alur kerja utama (`main`):**
 1. Membuat server socket, bind ke `0.0.0.0:5000`, dan mulai listen.
 2. Loop `s.accept()` menunggu koneksi masuk.
-3. Setiap koneksi baru dilayani oleh `client_handler` yang dijalankan di thread baru.
+3. Setiap koneksi baru dilayani oleh `client_handler` dan apabila sudah ada yg dilayani, maka dia akan ngelock dan tidak ada client lain yang bisa memerintah server.
 
 \
 **Fungsi-fungsi:**
