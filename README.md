@@ -968,3 +968,13 @@ After:
 **Komunikasi antara 2 `client.py` dan `server-select.py`**
 
 ![](Images/DuoSelect.png)
+
+**Komunikasi antara 2 `client.py` dan `server-thread.py`**
+
+Before:
+
+![](Images/Thread-1.png)
+
+After:
+
+![](Images/Thread-2.png)
