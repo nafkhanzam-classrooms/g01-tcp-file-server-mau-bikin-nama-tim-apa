@@ -967,4 +967,4 @@ After:
 
 **Komunikasi antara 2 `client.py` dan `server-select.py`**
 
-![](https://github.com/nafkhanzam-classrooms/g01-tcp-file-server-mau-bikin-nama-tim-apa/blob/c775320d342d826439f024f9ea26afab3c46aad4/Images/DuoSelect.png)
+![](Images/DuoSelect.png)
