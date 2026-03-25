@@ -20,6 +20,8 @@ def send_msg(sock, data):
 def recv_msg(sock):
     header = sock.recv(4)
     length = struct.unpack(">I", header)[0]
+    if not header or len(header) < 4:
+        return None
     buf = b""
     while len(buf) < length:
         buf += sock.recv(length - len(buf))
@@ -81,7 +83,22 @@ def receive_handler(sock):
             os._exit(0)
 
         sys.stdout.write('\r\033[K')
-
+        
+        if data.startswith(b"/download "):
+            try:
+                content = data[10:]
+                header, filedata = content.split(b":", 1)
+                filename = header.decode('utf-8')
+                
+                filepath = os.path.join(CLIENT_FILES_DIR, filename)
+                with open(filepath, "wb") as f:
+                    f.write(filedata)
+                
+                print(f"{C_GREEN}[SUCCESS]: File '{filename}' downloaded to {CLIENT_FILES_DIR}/{C_RESET}")
+            except Exception as e:
+                print(f"{C_RED}[ERROR]: Failed to save downloaded file: {e}{C_RESET}")
+            return
+            
         try:
             msg_str = data.decode('utf-8', errors='ignore')
             if any(key in msg_str for key in ["[LIST]", "[INFO]", "[SUCCESS]", "[UPLOAD]", "[DOWNLOAD]"]):
