@@ -6,7 +6,7 @@ import socket
 HOST = "127.0.0.1"
 PORT = 5000
 BUFFER_SIZE = 4096
-SERVER_FILES_DIR = "server_files"
+SERVER_FILES_DIR = "./Files/Uploaded"
 
 
 def send_line(sock, line):

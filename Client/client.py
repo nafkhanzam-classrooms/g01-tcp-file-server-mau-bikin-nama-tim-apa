@@ -83,7 +83,8 @@ def receiver_loop(sock_obj):
                     logging.info(f"Failed to decode downloaded file: {filename}")
                     continue
 
-                save_name = f"downloaded_{filename}"
+                os.makedirs("./Downloaded", exist_ok=True)
+                save_name = f"./Downloaded/downloaded_{filename}"
                 with open(save_name, "wb") as f:
                     f.write(content)
                 logging.info(f"Downloaded file saved as: {save_name}")
