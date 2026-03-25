@@ -953,4 +953,11 @@ if __name__ == "__main__":
 ## Screenshot Hasil
 **Komunikasi antara `client.py` dan `server-sync.py`**
 
-[]
+Before:
+
+![](https://github.com/nafkhanzam-classrooms/g01-tcp-file-server-mau-bikin-nama-tim-apa/blob/c775320d342d826439f024f9ea26afab3c46aad4/Images/Sync-1.png)
+
+After:
+
+![](https://github.com/nafkhanzam-classrooms/g01-tcp-file-server-mau-bikin-nama-tim-apa/blob/c775320d342d826439f024f9ea26afab3c46aad4/Images/Sync-2.png)
+
