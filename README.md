@@ -950,3 +950,6 @@ if __name__ == "__main__":
 ---
 
 ## Screenshot Hasil
+**Komunikasi antara `client.py` dan `server-sync.py`**
+
+[]
