@@ -1,168 +1,146 @@
-import base64
-import logging
-import os
 import socket
 import threading
+import struct
+import os
+import sys
 
-logging.basicConfig(level=logging.INFO)
+C_GREEN = "\033[1;32m"
+C_RED = "\033[1;31m"
+C_RESET = "\033[0m"
+C_YELLOW= "\033[1;33m"
+C_BOLD = "\033[1m"
 
-HOST = 'localhost'
-PORT = 5000
+CLIENT_FILES_DIR = "client_files"
+os.makedirs(CLIENT_FILES_DIR, exist_ok=True)
 
-BUFFER_SIZE = 4096
+def send_msg(sock, data):
+    header = struct.pack(">I", len(data))
+    sock.sendall(header + data)
 
-sock = None
-running = True
+def recv_msg(sock):
+    header = sock.recv(4)
+    length = struct.unpack(">I", header)[0]
+    buf = b""
+    while len(buf) < length:
+        buf += sock.recv(length - len(buf))
+    return buf
 
+def handle_list(sock):
+    send_msg(sock, b"/list")
 
-def send_line(sock_obj, line):
-    sock_obj.sendall((line + "\n").encode())
+def handle_download(sock, cmd):
+    parts = cmd.split()
+    if len(parts) == 1:
+        print(f"{C_RED}[ERROR]: Please specify a filename. Usage: /download <filename>{C_RESET}")
+        return
+    if len(parts) > 2:
+        print(f"{C_RED}[ERROR]: Too many arguments. Please provide only one filename.{C_RESET}")
+        return
+    filename = parts[1]
+    print(f"{C_YELLOW}[DOWNLOAD]: Starting download for '{filename}'...{C_RESET}")
+    send_msg(sock, f"/download {filename}".encode())
 
+def handle_upload(sock, cmd):
+    parts = cmd.split()
+    if len(parts) == 1:
+        print(f"{C_RED}[ERROR]: Please specify a filename. Usage: /upload <filename>{C_RESET}")
+        return
+    if len(parts) > 2:
+        print(f"{C_RED}[ERROR]: Too many arguments. Please upload one file at a time.{C_RESET}")
+        return
 
-def receiver_loop(sock_obj):
-    global running
-    buffer = ""
-
-    while running:
+    filename = parts[1]
+    filepath = os.path.join(CLIENT_FILES_DIR, filename)
+    
+    if os.path.exists(filepath):
         try:
-            data = sock_obj.recv(BUFFER_SIZE)
-        except OSError:
-            break
+            print(f"{C_YELLOW}[PENDING]: Uploading '{filename}' to server...{C_RESET}")
+            with open(filepath, "rb") as f:
+                filedata = f.read()
+            payload = f"/upload {filename}:".encode() + filedata
+            send_msg(sock, payload)
+        except Exception as e:
+            print(f"{C_RED}[ERROR]: Failed to read file: {e}{C_RESET}")
+    else:
+        print(f"{C_RED}[ERROR]: File '{filename}' not found in {CLIENT_FILES_DIR}/{C_RESET}")
 
-        if not data:
-            logging.info("Server disconnected")
-            running = False
-            break
+def print_menu():
+    print(f"\n{C_BOLD}{'-'*24} COMMAND LIST {'-'*24}{C_RESET}")
+    print("/list\t\t\t: View files available on server")
+    print("/upload <filename>\t: Upload a file to server")
+    print("/download <filename>\t: Download a file from server")
+    print("/exit\t\t\t: Close connection")
+    print("<type message>\t\t: Send a text message (Chat)")
+    print("-" * 62)
 
-        buffer += data.decode(errors="replace")
+def receive_handler(sock):
+    while True:
+        data = recv_msg(sock)
+        if data is None:
+            print(f"\n{C_RED}[INFO]: Disconnected from server.{C_RESET}")
+            os._exit(0)
 
-        while "\n" in buffer:
-            line, buffer = buffer.split("\n", 1)
-            line = line.strip()
-            if not line:
-                continue
+        sys.stdout.write('\r\033[K')
 
-            if line.startswith("CHAT|"):
-                parts = line.split("|", 2)
-                if len(parts) != 3:
-                    logging.info(f"Invalid chat response: {line}")
-                    continue
-                sender = parts[1]
-                message = parts[2]
-                logging.info(f"[{sender}] {message}")
-
-            elif line.startswith("LIST|"):
-                files_text = line.split("|", 1)[1]
-                files = [f for f in files_text.split(",") if f]
-                if files:
-                    logging.info("Server files:")
-                    for name in files:
-                        logging.info(f"- {name}")
-                else:
-                    logging.info("Server files: (empty)")
-
-            elif line.startswith("UPLOAD_OK|"):
-                parts = line.split("|", 2)
-                if len(parts) != 3:
-                    logging.info(f"Invalid upload response: {line}")
-                    continue
-                filename = parts[1]
-                size = parts[2]
-                logging.info(f"Upload success: {filename} ({size} bytes)")
-
-            elif line.startswith("DOWNLOAD|"):
-                parts = line.split("|", 2)
-                if len(parts) != 3:
-                    logging.info(f"Invalid download response: {line}")
-                    continue
-                filename = parts[1] or "downloaded_file"
-                content_b64 = parts[2]
-                try:
-                    content = base64.b64decode(content_b64.encode(), validate=True)
-                except Exception:
-                    logging.info(f"Failed to decode downloaded file: {filename}")
-                    continue
-
-                os.makedirs("./Downloaded", exist_ok=True)
-                save_name = f"./Downloaded/downloaded_{filename}"
-                with open(save_name, "wb") as f:
-                    f.write(content)
-                logging.info(f"Downloaded file saved as: {save_name}")
-
-            elif line.startswith("SYSTEM|"):
-                logging.info(line.split("|", 1)[1])
-
-            elif line.startswith("ERROR|"):
-                logging.info(f"Server error: {line.split('|', 1)[1]}")
-
+        try:
+            msg_str = data.decode('utf-8', errors='ignore')
+            if any(key in msg_str for key in ["[LIST]", "[INFO]", "[SUCCESS]", "[UPLOAD]", "[DOWNLOAD]"]):
+                print(f"{C_GREEN}{msg_str}{C_RESET}")
+            elif "[ERROR]" in msg_str:
+                print(f"{C_RED}{msg_str}{C_RESET}")
             else:
-                logging.info(f"Server response: {line}")
+                print(msg_str)
+        except Exception:
+            pass
 
-try:
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        print("> ", end="")
+        sys.stdout.flush()
 
-    server_address = (HOST, PORT)
-    logging.info(f"connecting to {server_address}")
-    sock.connect(server_address)
+def main():
+    os.system("clear")
+    name = input("Enter your username: ").strip() or "Anonymous"
 
-    receiver_thread = threading.Thread(target=receiver_loop, args=(sock,), daemon=True)
-    receiver_thread.start()
+    print(f"\n{C_BOLD}--- Connection Settings ---{C_RESET}")
+    target_ip = input("Enter Server IP: ").strip()
+    target_port = int(input("Enter Server Port: ").strip())
 
-    while running:
-        message = input(
-            "Message or command (/list, /upload <file>, /download <file>, exit): "
-        ).strip()
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        print(f"{C_GREEN}[INFO]: Connecting to {target_ip}:{target_port}...{C_RESET}")
+        s.connect((target_ip, target_port))
+        send_msg(s, f"/name {name}".encode())
+        print(f"{C_GREEN}[INFO]: Successfully connected!{C_RESET}")
+    except Exception as exception:
+        print(f"{C_RED}[ERROR]: Connection failed: {exception}{C_RESET}")
+        return
 
-        if message.lower() == 'exit':
-            logging.info("Client stopped by user")
-            running = False
+    print_menu()
+    
+    threading.Thread(target=receive_handler, args=(s,), daemon=True).start()
+
+    while True:
+        try:
+            cmd = input("> ").strip()
+            if not cmd:
+                continue
+            if cmd == "/exit":
+                print(f"{C_RED}[INFO]: Closing connection...{C_RESET}")
+                s.close()
+                os._exit(0)
+            elif cmd == "/list":
+                handle_list(s)
+            elif cmd.startswith("/download "):
+                handle_download(s, cmd)
+            elif cmd.startswith("/upload "):
+                handle_upload(s, cmd)
+            elif cmd.startswith("/"):
+                print(f"{C_RED}[ERROR]: Unknown command.{C_RESET}")
+            else:
+                send_msg(s, cmd.encode())
+                
+        except (EOFError, KeyboardInterrupt):
+            print(f"\n{C_RED}[INFO]: Connection interrupted by user.{C_RESET}")
             break
 
-        if not message:
-            logging.info("Message cannot be empty")
-            continue
-
-        if message == "/list":
-            send_line(sock, "LIST")
-            continue
-
-        if message.startswith("/upload "):
-            filename = message[len("/upload "):].strip()
-            if not filename:
-                logging.info("Usage: /upload <filename>")
-                continue
-            if not os.path.isfile(filename):
-                logging.info(f"File not found: {filename}")
-                continue
-
-            with open(filename, "rb") as f:
-                content = f.read()
-
-            send_line(
-                sock,
-                "UPLOAD|"
-                + os.path.basename(filename)
-                + "|"
-                + base64.b64encode(content).decode(),
-            )
-            continue
-
-        if message.startswith("/download "):
-            filename = message[len("/download "):].strip()
-            if not filename:
-                logging.info("Usage: /download <filename>")
-                continue
-
-            send_line(sock, f"DOWNLOAD|{filename}")
-            continue
-
-        send_line(sock, f"CHAT|{message}")
-
-except Exception as e:
-    logging.error(f"Error: {e}")
-
-finally:
-    running = False
-    if sock:
-        sock.close()
-        logging.info("Socket closed")
+if __name__ == "__main__":
+    main()
