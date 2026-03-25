@@ -7,6 +7,10 @@
 | Joaquin Fairuz Nawfal Ismono               |  5025241106          |      D     |
 |  Steven Alvin Christian              | 5025241116           |     D      |
 
+## Pembagian Tugas Anggota Kelompok
+1. Joaquin Fairuz Nawfal Ismono: Membuat file `client.py`, `server-poll.py`, `server-select.py`.
+2. Steven Alvin Christian: Membuat file `server-sync.py`, `server-thread.py`, dan menambahkan beberapa antarmuka.
+
 ## Link Youtube (Unlisted)
 Link ditaruh di bawah ini
 ```
